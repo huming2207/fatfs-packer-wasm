@@ -1,6 +1,6 @@
 mod utils;
 
-use std::{io::Cursor, ops::Range, path::Path, collections::btree_map::Entry};
+use std::{io::{Cursor, Write}, ops::Range, path::{PathBuf, Component}, str::FromStr};
 
 use fatfs::{FileSystem, FsOptions, format_volume, FormatVolumeOptions};
 use wasm_bindgen::prelude::*;
@@ -21,30 +21,79 @@ impl FatFsPacker {
     }
 
     #[wasm_bindgen]
-    pub fn format(self) -> bool {
+    pub fn format(self) -> Result<(), JsError> {
         let options = FormatVolumeOptions::new().total_sectors(self.sector_count).bytes_per_sector(self.sector_size);
         match format_volume(Cursor::new(self.buf), options) {
-            Ok(()) => true,
-            Err(_) => false,
+            Ok(()) => Ok(()),
+            Err(err) => Err(JsError::new(format!("{:?}", err).as_str())),
         }
     }
 
     #[wasm_bindgen]
-    pub fn add_data(self, buf: &[u8], name: &str) -> bool {
+    pub fn create_path(self, path: &str) -> Result<(), JsError> {
         let fs = match FileSystem::new(Cursor::new(self.buf), FsOptions::new()) {
             Ok(fs) => fs,
-            Err(_) => return false,
+            Err(err) => return Err(JsError::new(format!("{:?}", err).as_str())),
         };
-    
-        let root = fs.root_dir();
-        let path = Path::new(name);
-        for entry in path.read_dir().expect("Can't parse directory") {
-            if let Ok(entry) = entry {
-                
+
+        let mut dir = fs.root_dir();
+        let path = match PathBuf::from_str(path) {
+            Ok(p) => p,
+            Err(err) => return Err(JsError::new(format!("{:?}", err).as_str())),
+        };
+
+        let path_iter = path.components();
+        for entry in path_iter {
+            if entry == Component::RootDir {
+                continue;
+            }
+
+            let entry_str = match entry.as_os_str().to_str() {
+                Some(s) => s,
+                None => continue,
+            };
+
+            dir = match dir.open_dir(entry_str) {
+                Ok(d) => {
+                    // Enter this directory if exists
+                    d
+                },
+                Err(_) => {
+                    // Create directory here if not exists 
+                    match dir.create_dir(entry_str) {
+                        Ok(d) => d,
+
+                        // If you can't even create, something else must be wrong!
+                        Err(err) => return Err(JsError::new(format!("{:?}", err).as_str())),
+                    }
+                }
             }
         }
 
+        Ok(())
+    }
 
-        false
+    #[wasm_bindgen]
+    pub fn add_data(self, buf: &[u8], path: &str) -> Result<(), JsError> {
+        let fs = match FileSystem::new(Cursor::new(self.buf), FsOptions::new()) {
+            Ok(fs) => fs,
+            Err(err) => return Err(JsError::new(format!("{:?}", err).as_str())),
+        };
+    
+        let dir = fs.root_dir();
+        let mut file = match dir.create_file(path) {
+            Ok(f) => f,
+            Err(err) => return Err(JsError::new(format!("{:?}", err).as_str())),
+        };
+
+        match file.write_all(buf) {
+            Ok(()) => Ok(()),
+            Err(err) => return Err(JsError::new(format!("{:?}", err).as_str())),
+        }
+    }
+
+    #[wasm_bindgen]
+    pub fn generate_image(&self) -> Vec<u8> {
+        return self.buf.to_vec();
     }
 }
