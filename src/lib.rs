@@ -29,7 +29,7 @@ impl FatFsPacker {
         }
     }
 
-    #[wasm_bindgen]
+    #[wasm_bindgen(js_name = createPath)]
     pub fn create_path(self, path: &str) -> Result<(), JsError> {
         let fs = match FileSystem::new(Cursor::new(self.buf), FsOptions::new()) {
             Ok(fs) => fs,
@@ -73,7 +73,7 @@ impl FatFsPacker {
         Ok(())
     }
 
-    #[wasm_bindgen]
+    #[wasm_bindgen(js_name = addData)]
     pub fn add_data(self, buf: &[u8], path: &str) -> Result<(), JsError> {
         let fs = match FileSystem::new(Cursor::new(self.buf), FsOptions::new()) {
             Ok(fs) => fs,
@@ -92,7 +92,7 @@ impl FatFsPacker {
         }
     }
 
-    #[wasm_bindgen]
+    #[wasm_bindgen(js_name = generateImage)]
     pub fn generate_image(&self) -> Vec<u8> {
         return self.buf.to_vec();
     }
